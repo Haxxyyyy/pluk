@@ -1,0 +1,1 @@
+- Preserve session state and CLI metadata when raw terminal output floods the recent log tail.
