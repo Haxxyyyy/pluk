@@ -30,12 +30,30 @@ function readLastEvents(filePath: string, maxEvents: number): PlukEvent[] {
   try {
     const content = readFileSync(filePath, 'utf-8');
     const lines = content.split('\n').filter(l => l.trim());
-    const start = Math.max(0, lines.length - MAX_TAIL_LINES);
+    let nonRawLines = 0;
+    let latestActivity: PlukEvent | undefined;
+    let latestCli: PlukEvent | undefined;
 
-    for (let i = lines.length - 1; i >= start && events.length < maxEvents; i--) {
+    for (let i = lines.length - 1; i >= 0 && nonRawLines < MAX_TAIL_LINES; i--) {
       const event = parseEvent(lines[i]);
-      if (event) events.unshift(event);
+      if (!event) continue;
+
+      latestActivity ??= event;
+      if (!latestCli && event.data['cli'] && event.data['cli'] !== 'unknown') {
+        latestCli = event;
+      }
+
+      if (event.type === 'raw_output') continue;
+      nonRawLines++;
+      if (events.length < maxEvents) events.unshift(event);
     }
+
+    // Raw output is frequent and carries little summary metadata. Keep only the
+    // latest activity and CLI marker while counting the tail limit on other
+    // event types, so terminal output cannot evict state changes from the view.
+    if (latestCli && !events.includes(latestCli)) events.push(latestCli);
+    if (latestActivity && !events.includes(latestActivity)) events.push(latestActivity);
+    events.sort((a, b) => a.ts.localeCompare(b.ts));
   } catch {
     // file unreadable
   }
